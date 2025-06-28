@@ -407,8 +407,20 @@ def route_after_triage(state: TriageState) -> Literal["generate_recipe", "acknow
 
 def acknowledge_preferences(state: TriageState, store: BaseStore):
     """Simple acknowledgement after updating user preferences."""
+    food_preferences = get_food_preferences(
+        store,
+        ("recipe_assistant", "food_preferences"),
+        DEFAULT_FOOD_PREFERENCES,
+    )
     return {
-        "messages": [AIMessage(content="Got it. I've updated your food preferences.")]
+        "messages": [
+            AIMessage(
+                content=(
+                    "Got it. I've updated your food preferences. "
+                    "Here is your current preference profile:\n\n" + str(food_preferences)
+                )
+            )
+        ]
     }
 
 # ===============================
