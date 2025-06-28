@@ -21,9 +21,7 @@ with st.sidebar:
         "Whole Foods",
         "Trader Joe's",
         "Costco",
-        "Safeway",
         "Aldi",
-        "Publix",
         "Other",
     ]
 
