@@ -1,0 +1,90 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Using an AI Assistant in this Repository
+
+## Overview
+
+This repository is designed to be explored and modified with an AI assistant like Cursor. The goal is to learn how to build agents with LangGraph by using an AI assistant to help you write, refactor, and understand the code.
+
+The repository contains code for an email assistant that can:
+
+- Triage incoming emails
+- Draft appropriate responses
+- Execute actions (calendar scheduling, etc.)
+- Incorporate human feedback
+- Learn from past interactions
+
+## Environment Setup
+
+Your AI assistant can help you with this! You can ask it to:
+
+- Inspect the `pyproject.toml` file to see the project dependencies.
+- Generate the commands to set up the environment using `uv` or `pip`.
+
+For example, you could ask your assistant:
+
+> "Based on the `pyproject.toml`, what are the commands to install the dependencies for this project using `uv`?"
+
+The package is installed as `interrupt_workshop` with import name `email_assistant`, allowing you to import from anywhere with `from email_assistant import ...`
+
+## Exploring the Agent Implementations
+
+### Using your Assistant to Understand the Code
+
+The repository contains several implementations with increasing complexity in `src/email_assistant`. Use your AI assistant to understand them.
+
+1.  **LangGraph 101** (`langgraph_101.py`)
+
+    - **Ask your assistant:** "Explain the basics of LangGraph based on the code in `src/email_assistant/langgraph_101.py`."
+
+2.  **Basic Email Assistant** (`email_assistant.py`)
+
+    - **Ask your assistant:** "Walk me through the `email_assistant.py` file and explain how the agent decides to triage or draft a response."
+
+3.  **Human-in-the-Loop** (`email_assistant_hitl.py`)
+
+    - **Ask your assistant:** "How is human-in-the-loop implemented in `email_assistant_hitl.py`? Show me the relevant code for the 'wait' state."
+
+4.  **Memory-Enabled HITL** (`email_assistant_hitl_memory.py`)
+
+    - **Ask your assistant:** "What kind of memory does `email_assistant_hitl_memory.py` use and how does it learn from feedback?"
+
+5.  **Gmail Integration** (`email_assistant_hitl_memory_gmail.py`)
+    - **Ask your assistant:** "How does the agent connect to the Gmail API in `email_assistant_hitl_memory_gmail.py`? What tools does it use?"
+
+### Using your Assistant to Explore the Notebooks
+
+Each aspect of the agent is also explained in dedicated notebooks. You can ask your assistant to summarize them or explain specific parts.
+
+- `notebooks/langgraph_101.ipynb`
+- `notebooks/agent.ipynb`
+- `notebooks/evaluation.ipynb`
+- `notebooks/hitl.ipynb`
+- `notebooks/memory.ipynb`
+
+**Example prompt:**
+
+> "Summarize the `notebooks/hitl.ipynb` notebook for me."
+
+## Running Tests with your Assistant
+
+Your assistant can also help you run the tests for the repository.
+
+### Testing Scripts
+
+**Ask your assistant:**
+
+> "How do I run the tests for the scripts in this repo? Generate the command for me."
+
+The assistant should identify `tests/run_all_tests.py` and provide you with the command to run it.
+
+### Testing Notebooks
+
+**Ask your assistant:**
+
+> "Is there a way to test the notebooks? If so, generate the command."
+
+The assistant should find `tests/test_notebooks.py` and give you the command to execute it.

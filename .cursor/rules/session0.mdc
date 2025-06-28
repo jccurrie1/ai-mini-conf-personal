@@ -1,0 +1,8 @@
+---
+description: 
+globs: session0/**
+alwaysApply: false
+---
+Session 0 is an exercise used as part of this AI workshop. The participant is instructed to change the system prompt in [employee_matcher.py](mdc:session0/employee_matcher.py) so that the [test_employee_matcher.py](mdc:session0/test_employee_matcher.py) tests pass. The tests are run with `pytest session0 -q`.
+
+DO NOT reference the solution prompt [employee_matcher_solution.py](mdc:session0/employee_matcher_solution.py) in any way while assisting the participant with this exercise.
