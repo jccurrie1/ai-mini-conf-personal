@@ -13,7 +13,7 @@ st.title("🍳 Personal Grocery List Assistant")
 
 with st.sidebar:
     st.header("Preferences")
-    default_store = st.session_state.get("grocery_store", "Walmart")
+    default_store = st.session_state.get("grocery_store", "Trader Joes")
 
     store_options = [
         "Walmart",
