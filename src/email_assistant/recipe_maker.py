@@ -132,7 +132,7 @@ Preferred meal types: Not specified.
 # ===============================
 
 def triage_request(state: TriageState, store: BaseStore):
-    """Analyze user input and determine if it's a weekly grocery list request."""
+    """Analyze user input and determine if it's a weekly grocery list request or a food preference."""
     
     # Initialize the LLM
     llm = init_chat_model("gpt-4.1", temperature=0)
@@ -206,20 +206,40 @@ def triage_request(state: TriageState, store: BaseStore):
     response_lower = response_text.lower()
     llm_says_recipe = 'grocery_list_request' in response_lower and 'not_grocery_list_request' not in response_lower
     
-    # Classify as recipe request if either condition is met
+    # Detect explicit preference updates, e.g. "I like lemons", "I'm allergic to peanuts"
+    preference_update_phrases = [
+        "i like", "i love", "i prefer", "my favorite", "i hate", "i don't like",
+        "i dislike", "i am allergic", "i'm allergic", "allergic to", "i cannot eat",
+        "i can't eat", "i am vegan", "i'm vegan", "i am vegetarian", "i'm vegetarian",
+        "gluten-free", "dairy-free", "nut-free", "egg-free"
+    ]
+    has_preference_update = any(phrase in user_lower for phrase in preference_update_phrases)
+    
+    # Classify request
     if has_recipe_keywords or llm_says_recipe:
         category = "grocery_list_request"
-        
-        # Update food preferences if this is a recipe request
+        # Update food preferences if this is a grocery list request
         update_food_preferences(
             store,
             ("recipe_assistant", "food_preferences"),
             [{"role": "user", "content": user_message}],
             food_preferences
         )
+    elif has_preference_update:
+        category = "preference_update"
+        # Directly update user preferences from this statement
+        update_food_preferences(
+            store,
+            ("recipe_assistant", "food_preferences"),
+            [{"role": "user", "content": user_message}],
+            food_preferences
+        )
+    else:
+        category = "not_grocery_list_request"
     
     print(f"DEBUG: Has recipe keywords: {has_recipe_keywords}")
     print(f"DEBUG: LLM says recipe: {llm_says_recipe}")
+    print(f"DEBUG: Has preference update: {has_preference_update}")
     print(f"DEBUG: Final classification: {category}")
     
     return {
@@ -309,14 +329,26 @@ def generate_recipe(state: TriageState, store: BaseStore):
 # CONDITIONAL ROUTING
 # ===============================
 
-def route_after_triage(state: TriageState) -> Literal["generate_recipe", "__end__"]:
+def route_after_triage(state: TriageState) -> Literal["generate_recipe", "acknowledge_preferences", "__end__"]:
     """Route based on triage classification."""
     classification = state.get("classification", "not_grocery_list_request")
     
     if classification == "grocery_list_request":
         return "generate_recipe"
+    elif classification == "preference_update":
+        return "acknowledge_preferences"
     else:
         return "__end__"
+
+# ===============================
+# ACKNOWLEDGEMENT NODE
+# ===============================
+
+def acknowledge_preferences(state: TriageState, store: BaseStore):
+    """Simple acknowledgement after updating user preferences."""
+    return {
+        "messages": [AIMessage(content="Got it. I've updated your food preferences.")]
+    }
 
 # ===============================
 # WORKFLOW CONSTRUCTION
@@ -331,6 +363,7 @@ def create_triage_agent():
     # Add nodes (store parameter will be passed automatically by LangGraph)
     workflow.add_node("triage", triage_request)
     workflow.add_node("generate_recipe", generate_recipe)
+    workflow.add_node("acknowledge_preferences", acknowledge_preferences)
     
     # Set up the flow with conditional routing
     workflow.add_edge(START, "triage")
@@ -339,10 +372,12 @@ def create_triage_agent():
         route_after_triage,
         {
             "generate_recipe": "generate_recipe",
+            "acknowledge_preferences": "acknowledge_preferences",
             "__end__": END,
         },
     )
     workflow.add_edge("generate_recipe", END)
+    workflow.add_edge("acknowledge_preferences", END)
     
     # Compile with memory support (store will be injected by LangGraph)
     return workflow.compile()
