@@ -132,7 +132,7 @@ Preferred meal types: Not specified.
 # ===============================
 
 def triage_request(state: TriageState, store: BaseStore):
-    """Analyze user input and determine if it's a food recipe request."""
+    """Analyze user input and determine if it's a weekly grocery list request."""
     
     # Initialize the LLM
     llm = init_chat_model("gpt-4.1", temperature=0)
@@ -152,7 +152,7 @@ def triage_request(state: TriageState, store: BaseStore):
     
     if not user_message:
         return {
-            "classification": "not_recipe_request",
+            "classification": "not_grocery_list_request",
             "triage_result": "No user input found",
         }
     
@@ -161,23 +161,21 @@ def triage_request(state: TriageState, store: BaseStore):
     
     # Create triage prompt with food preferences context
     triage_prompt = f"""
-    Analyze the following user input and determine if it is a food recipe request:
-    
+    Analyze the following user input and determine if it is a weekly grocery list request (rather than a single recipe request).
+
     User Input: "{user_message}"
-    
+
     User's Food Preferences: {food_preferences}
-    
-    Determine if this is a food recipe request. This includes:
-    - Asking for a specific recipe
-    - Requesting cooking instructions
-    - Asking for meal suggestions or recommendations
-    - Requesting cooking advice or tips
-    - Asking about ingredients or cooking methods
-    - Any food-related cooking request
-    - Expressing food preferences or dietary needs
-    
+
+    Treat the following as a grocery list request:
+    - Asking for a grocery or shopping list for the week
+    - Requesting ingredients to buy for upcoming meals
+    - Asking what to purchase based on dietary goals or restrictions
+    - Any question focused on compiling ingredients rather than cooking instructions
+    - Expressing food preferences or dietary needs and asking what to buy
+
     Respond with:
-    Category: recipe_request OR not_recipe_request
+    Category: grocery_list_request OR not_grocery_list_request
     Analysis: [brief explanation of why you classified it this way]
     """
     
@@ -189,14 +187,15 @@ def triage_request(state: TriageState, store: BaseStore):
     print(f"DEBUG: LLM triage response: {response_text}")
     
     # Extract category from response - improved logic
-    category = "not_recipe_request"  # Default to not a recipe request
+    category = "not_grocery_list_request"  # Default to not a grocery list request
     
     # More robust classification - check for recipe-related keywords
     recipe_keywords = [
-        'recipe', 'cook', 'bake', 'prepare', 'ingredients', 'meal', 'dish', 
-        'food', 'kitchen', 'eat', 'dinner', 'lunch', 'breakfast', 'dessert',
-        'sauce', 'soup', 'salad', 'bread', 'cake', 'cookies', 'pasta',
-        'vegetarian', 'vegan', 'gluten-free', 'allergic', 'diet', 'cuisine'
+        # Keywords indicating a grocery/shopping list request or meal planning
+        'grocery', 'shopping list', 'shopping', 'grocery list', 'store list', 'buy', 'purchase',
+        # Keywords retained from recipe/meal context to capture broader food planning phrasing
+        'ingredients', 'meal plan', 'meal', 'dish', 'food', 'kitchen', 'eat', 'dinner',
+        'lunch', 'breakfast', 'vegetarian', 'vegan', 'gluten-free', 'allergic', 'diet', 'cuisine'
     ]
     
     # Check the user message directly for recipe keywords
@@ -205,11 +204,11 @@ def triage_request(state: TriageState, store: BaseStore):
     
     # Also check the LLM response
     response_lower = response_text.lower()
-    llm_says_recipe = 'recipe_request' in response_lower and 'not_recipe_request' not in response_lower
+    llm_says_recipe = 'grocery_list_request' in response_lower and 'not_grocery_list_request' not in response_lower
     
     # Classify as recipe request if either condition is met
     if has_recipe_keywords or llm_says_recipe:
-        category = "recipe_request"
+        category = "grocery_list_request"
         
         # Update food preferences if this is a recipe request
         update_food_preferences(
@@ -235,7 +234,7 @@ def triage_request(state: TriageState, store: BaseStore):
 # ===============================
 
 def generate_recipe(state: TriageState, store: BaseStore):
-    """Generate a recipe based on the user's request and their food preferences."""
+    """Generate a weekly grocery list based on the user's request, food preferences, and dietary goals."""
     
     # Initialize the LLM
     llm = init_chat_model("gpt-4.1", temperature=0)
@@ -250,23 +249,41 @@ def generate_recipe(state: TriageState, store: BaseStore):
         DEFAULT_FOOD_PREFERENCES
     )
     
-    # Create recipe generation prompt with personalized preferences
+    # Create grocery list generation prompt with personalized preferences and meal-building framework
     recipe_prompt = f"""
-    The user has requested a food recipe. Please provide a helpful, detailed recipe response that takes into account their preferences.
-    
+    The user would like a WEEKLY GROCERY LIST. Please generate a comprehensive shopping list that aligns with their preferences, dietary restrictions, and goals.
+
     User Request: "{user_message}"
-    
-    User's Food Preferences: {food_preferences}
-    
-    Please provide:
-    1. A clear recipe title
-    2. List of ingredients with measurements
-    3. Step-by-step cooking instructions
-    4. Cooking time and serving information
-    5. Any helpful tips or variations
-    6. Consider the user's dietary restrictions and preferences when suggesting the recipe
-    
-    Make your response friendly, clear, and easy to follow. Personalize the recipe based on their known preferences.
+
+    User's Food Preferences & Dietary Info: {food_preferences}
+
+    Use Ethan Chlebowski's Meal-Building Framework as guidance for ingredient selection:
+    1. Base (grains, noodles, breads, greens)
+    2. Protein (animal, plant, eggs)
+    3. Vegetables (crisp, leafy, roasted)
+    4. Aromatics (alliums, ginger/chilies, herbs & spices)
+    5. Sauce / Seasoning (homemade, store-bought, DIY ratios)
+    6. Garnish & Extras (fresh herbs, crunch, acid)
+
+    Instructions:
+    • Curate ingredients so the user can easily assemble balanced meals by picking one from each category above.
+    • Organize the grocery list by supermarket section (Produce, Proteins, Pantry, Dairy & Eggs, Frozen, Miscellaneous).
+    • Provide quantities appropriate for ONE WEEK (assume ~14 meals). Adjust based on any dietary goals or household size mentioned by the user.
+    • Where possible, suggest batch-prep tactics (e.g., bulk-cook grains, freeze portions of sauce, prep proteins in advance).
+
+    Output format:
+    === Grocery List ===
+    Produce:
+    - …
+    Proteins:
+    - …
+    Pantry / Dry Goods:
+    - …
+    (continue as needed)
+
+    === Meal Ideas ===
+    • Base + Protein + Vegetables + Aromatics + Sauce example …
+    (List at least 5 flexible meal ideas that only rely on ingredients from the grocery list.)
     """
     
     # Get LLM response
@@ -294,9 +311,9 @@ def generate_recipe(state: TriageState, store: BaseStore):
 
 def route_after_triage(state: TriageState) -> Literal["generate_recipe", "__end__"]:
     """Route based on triage classification."""
-    classification = state.get("classification", "not_recipe_request")
+    classification = state.get("classification", "not_grocery_list_request")
     
-    if classification == "recipe_request":
+    if classification == "grocery_list_request":
         return "generate_recipe"
     else:
         return "__end__"
