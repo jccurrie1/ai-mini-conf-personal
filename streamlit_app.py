@@ -35,6 +35,63 @@ with st.sidebar:
     # Persist the chosen store across reruns
     st.session_state.grocery_store = store_choice
 
+    # ---------------------------------------------------------------------
+    # Food & nutrition preferences form
+    # ---------------------------------------------------------------------
+
+    st.subheader("Food & Nutrition Preferences")
+
+    likes = st.text_area(
+        "Foods you like (comma-separated)",
+        value=st.session_state.get("likes", ""),
+        placeholder="e.g., salmon, broccoli, brown rice",
+        height=80,
+    )
+    st.session_state.likes = likes.strip()
+
+    dislikes = st.text_area(
+        "Foods you dislike (comma-separated)",
+        value=st.session_state.get("dislikes", ""),
+        placeholder="e.g., cilantro, mushrooms",
+        height=80,
+    )
+    st.session_state.dislikes = dislikes.strip()
+
+    dietary = st.text_input(
+        "Dietary restrictions / lifestyle", 
+        value=st.session_state.get("dietary", ""),
+        placeholder="e.g., vegetarian, gluten-free, nut allergy",
+    )
+    st.session_state.dietary = dietary.strip()
+
+    caloric_goal = st.number_input(
+        "Daily caloric goal (kcal)",
+        min_value=0,
+        value=int(st.session_state.get("caloric_goal", 0)) if isinstance(st.session_state.get("caloric_goal", 0), (int, float)) else 0,
+        step=50,
+    )
+    st.session_state.caloric_goal = int(caloric_goal)
+
+    price_goal = st.number_input(
+        "Weekly grocery budget ($)",
+        min_value=0,
+        value=int(st.session_state.get("price_goal", 0)) if isinstance(st.session_state.get("price_goal", 0), (int, float)) else 0,
+        step=5,
+    )
+    st.session_state.price_goal = int(price_goal)
+
+    # Display a quick summary so the user can see what is currently stored
+    st.markdown("### Current Preferences Summary")
+    st.markdown(
+        f"""
+        • **Likes:** {st.session_state.likes or '–'}  
+        • **Dislikes:** {st.session_state.dislikes or '–'}  
+        • **Dietary:** {st.session_state.dietary or '–'}  
+        • **Caloric goal:** {st.session_state.caloric_goal if st.session_state.caloric_goal > 0 else '–'} kcal  
+        • **Weekly budget:** {('$' + str(st.session_state.price_goal)) if st.session_state.price_goal > 0 else '–'}
+        """
+    )
+
 # -----------------------------------------------------------------------------
 # Session-level state helpers
 # -----------------------------------------------------------------------------
@@ -71,8 +128,24 @@ if user_input:
     # Append the user's preferred grocery store to the message so the agent can
     # take it into account when generating a grocery list and pricing.
     store_info = st.session_state.get("grocery_store", "")
+
+    # Consolidate preference details
+    pref_parts = []
+    if st.session_state.get("likes"):
+        pref_parts.append(f"I like {st.session_state.likes}.")
+    if st.session_state.get("dislikes"):
+        pref_parts.append(f"I dislike {st.session_state.dislikes}.")
+    if st.session_state.get("dietary"):
+        pref_parts.append(f"My dietary restrictions: {st.session_state.dietary}.")
+    if st.session_state.get("caloric_goal", 0) > 0:
+        pref_parts.append(f"My daily caloric goal is {int(st.session_state.caloric_goal)} kcal.")
+    if st.session_state.get("price_goal", 0) > 0:
+        pref_parts.append(f"My weekly grocery budget is ${int(st.session_state.price_goal)}.")
+
+    pref_text = " ".join(pref_parts)
+
     augmented_user_input = (
-        f"{user_input}\n\nMy preferred grocery store is {store_info}. Please use typical prices from this store when estimating costs."
+        f"{user_input}\n\nMy preferred grocery store is {store_info}. {pref_text} Please use these preferences when generating recipes and estimating costs."
     )
 
     human_msg = HumanMessage(content=augmented_user_input)
