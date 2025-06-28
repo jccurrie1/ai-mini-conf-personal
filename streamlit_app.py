@@ -5,7 +5,37 @@ from langchain_core.messages import HumanMessage, BaseMessage
 from email_assistant.recipe_maker import email_assistant as recipe_agent
 
 st.set_page_config(page_title="Recipe Assistant", page_icon="🍳")
-st.title("🍳 Personal Recipe Assistant")
+st.title("🍳 Personal Grocery List Assistant")
+
+# -----------------------------------------------------------------------------
+# Sidebar – user preferences
+# -----------------------------------------------------------------------------
+
+with st.sidebar:
+    st.header("Preferences")
+    default_store = st.session_state.get("grocery_store", "Walmart")
+
+    store_options = [
+        "Walmart",
+        "Kroger",
+        "Whole Foods",
+        "Trader Joe's",
+        "Costco",
+        "Safeway",
+        "Aldi",
+        "Publix",
+        "Other",
+    ]
+
+    # Select or enter the preferred grocery store
+    store_choice = st.selectbox("Preferred grocery store", store_options, index=store_options.index(default_store) if default_store in store_options else len(store_options) - 1)
+
+    if store_choice == "Other":
+        store_choice = st.text_input("Enter store name", value=st.session_state.get("grocery_store_custom", ""))
+        st.session_state.grocery_store_custom = store_choice
+
+    # Persist the chosen store across reruns
+    st.session_state.grocery_store = store_choice
 
 # -----------------------------------------------------------------------------
 # Session-level state helpers
@@ -16,9 +46,8 @@ if "agent" not in st.session_state:
     st.session_state.agent = recipe_agent
 
 if "chat_history" not in st.session_state:
-    # We keep the full chat history so that it can be sent back to the agent on
-    # each turn and also rendered in the UI.
-    st.session_state.chat_history: list[BaseMessage] = []
+    # Initialize chat history list (annotation removed for compatibility with st.session_state)
+    st.session_state.chat_history = []
 
 # -----------------------------------------------------------------------------
 # Display chat history so far
@@ -41,7 +70,14 @@ if user_input:
     # -------------------------------------------------------------------------
     # 1) Add the user message to the chat history
     # -------------------------------------------------------------------------
-    human_msg = HumanMessage(content=user_input)
+    # Append the user's preferred grocery store to the message so the agent can
+    # take it into account when generating a grocery list and pricing.
+    store_info = st.session_state.get("grocery_store", "")
+    augmented_user_input = (
+        f"{user_input}\n\nMy preferred grocery store is {store_info}. Please use typical prices from this store when estimating costs."
+    )
+
+    human_msg = HumanMessage(content=augmented_user_input)
     st.session_state.chat_history.append(human_msg)
 
     # Render the user message immediately so the interface feels responsive

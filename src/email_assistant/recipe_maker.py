@@ -107,8 +107,8 @@ def update_food_preferences(store: BaseStore, namespace, messages, current_prefe
     )
     
     # Handle the structured output result properly
-    if hasattr(result, 'food_preferences'):
-        updated_preferences = result.food_preferences
+    if hasattr(result, 'food_preferences'):  # type: ignore[attr-defined]
+        updated_preferences = result.food_preferences  # type: ignore[attr-defined]
     elif isinstance(result, dict) and 'food_preferences' in result:
         updated_preferences = result['food_preferences']
     else:
@@ -290,6 +290,8 @@ def generate_recipe(state: TriageState, store: BaseStore):
     • Organize the grocery list by supermarket section (Produce, Proteins, Pantry, Dairy & Eggs, Frozen, Miscellaneous).
     • Provide quantities appropriate for ONE WEEK (assume ~14 meals). Adjust based on any dietary goals or household size mentioned by the user.
     • Where possible, suggest batch-prep tactics (e.g., bulk-cook grains, freeze portions of sauce, prep proteins in advance).
+    • For each ingredient, include an estimated price in USD. If the user has specified a preferred grocery store (e.g., "My preferred grocery store is Costco"), base your estimate on typical prices for that store; otherwise use a reasonable U.S. national average price.
+    • After the grocery list, add an "=== Estimated Cost Summary ===" section that lists a subtotal for every grocery section and a final total estimated cost for the entire week.
 
     Output format:
     === Grocery List ===
@@ -300,6 +302,12 @@ def generate_recipe(state: TriageState, store: BaseStore):
     Pantry / Dry Goods:
     - …
     (continue as needed)
+
+    === Estimated Cost Summary ===
+    Produce subtotal: $...
+    Proteins subtotal: $...
+    (continue as needed)
+    Total estimated cost: $...
 
     === Meal Ideas ===
     • Base + Protein + Vegetables + Aromatics + Sauce example …
