@@ -5,7 +5,7 @@ This agent takes user input and uses an LLM to determine if it's a food recipe r
 It also maintains memory of user food preferences.
 """
 
-from typing import Literal, List, Dict, Any, Optional
+from typing import Literal, List, Dict, Any, Optional, cast
 from pydantic import BaseModel, Field
 
 from langchain.chat_models import init_chat_model
@@ -13,6 +13,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from langgraph.graph import StateGraph, START, END, MessagesState
 from langgraph.store.base import BaseStore
+from langchain.storage import LocalFileStore  # NEW: lightweight on-disk store persisting to folder
 
 # ===============================
 # SCHEMAS AND STATE
@@ -33,6 +34,17 @@ class TriageState(MessagesState):
 # MEMORY MANAGEMENT
 # ===============================
 
+def _compose_key(namespace: tuple, key: str) -> str:
+    """Convert a namespace tuple + key into the flat string format expected by
+    `LocalFileStore` (and other `BaseStore` implementations that operate on
+    simple string keys). For example, `(\"recipe_assistant\", \"prefs\")` and
+    ``food_preferences`` becomes ``recipe_assistant/prefs/food_preferences``.
+    """
+    if isinstance(namespace, (list, tuple)):
+        return "/".join([*namespace, key])
+    # Fallback – if the caller passed a single string as the namespace
+    return f"{namespace}/{key}"
+
 def get_food_preferences(store: BaseStore, namespace, default_content=None):
     """Get food preferences from the store or initialize with default if it doesn't exist.
     
@@ -44,26 +56,56 @@ def get_food_preferences(store: BaseStore, namespace, default_content=None):
     Returns:
         str: The content of the food preferences, either from existing memory or the default
     """
-    # If no store was provided (e.g., the graph is executed without a persistent
-    # memory backend such as in the Streamlit demo), gracefully fall back to
-    # using the default content in memory-less mode.
     if store is None:
         return default_content or ""
 
-    user_food_prefs = store.get(namespace, "food_preferences")
-    
-    # If memory exists, return its content (the value)
-    if user_food_prefs:
-        return user_food_prefs.value
-    
-    # If memory doesn't exist, add it to the store and return the default content
-    else:
-        # Namespace, key, value
-        store.put(namespace, "food_preferences", default_content or "")  # type: ignore[arg-type]
-        user_food_prefs = default_content or ""
-    
-    # Return the default content
-    return user_food_prefs
+    # ------------------------------------------------------------------
+    # Try the modern BaseStore API (mget/mset) first.  If the store happens
+    # to expose the legacy `get`/`put` helpers we fall back to those so that
+    # other store implementations (e.g. RedisStore) keep working unchanged.
+    # ------------------------------------------------------------------
+    full_key = _compose_key(namespace, "food_preferences")
+
+    user_food_prefs = None
+
+    if hasattr(store, "mget"):
+        try:
+            result_bytes = store.mget([full_key])[0]  # type: ignore[attr-defined]
+            if result_bytes is not None:
+                user_food_prefs = result_bytes.decode()
+        except Exception:
+            # Silent failure – we'll handle by initialising below
+            user_food_prefs = None
+    elif hasattr(store, "get"):
+        # Legacy two-argument API
+        try:
+            pref_obj = store.get(namespace, "food_preferences")
+            if pref_obj:
+                user_food_prefs = pref_obj.value if hasattr(pref_obj, "value") else str(pref_obj)
+        except Exception:
+            user_food_prefs = None
+
+    # If found, return it immediately
+    if user_food_prefs is not None:
+        return user_food_prefs
+
+    # ------------------------------------------------------------------
+    # Preference not found – initialise using the provided default.
+    # ------------------------------------------------------------------
+    initial = default_content or ""
+
+    if hasattr(store, "mset"):
+        try:
+            store.mset([(full_key, initial.encode())])  # type: ignore[attr-defined]
+        except Exception:
+            pass  # Non-critical – continue without persistence
+    elif hasattr(store, "put"):
+        try:
+            store.put(namespace, "food_preferences", initial)  # type: ignore[arg-type]
+        except Exception:
+            pass
+
+    return initial
 
 def update_food_preferences(store: BaseStore, namespace, messages, current_preferences):
     """Update food preferences in the store.
@@ -106,17 +148,28 @@ def update_food_preferences(store: BaseStore, namespace, messages, current_prefe
         ] + messages
     )
     
-    # Handle the structured output result properly
-    if hasattr(result, 'food_preferences'):  # type: ignore[attr-defined]
+    # Extract the structured field (handles both object + dict variants)
+    if hasattr(result, "food_preferences"):
         updated_preferences = result.food_preferences  # type: ignore[attr-defined]
-    elif isinstance(result, dict) and 'food_preferences' in result:
-        updated_preferences = result['food_preferences']
+    elif isinstance(result, dict) and "food_preferences" in result:
+        updated_preferences = result["food_preferences"]
     else:
         updated_preferences = str(result)
     
-    # Persist the updated preferences only if a store is available
-    if store is not None:
-        store.put(namespace, "food_preferences", updated_preferences)  # type: ignore[arg-type]
+    # Persist the updated preferences – tolerate stores that only implement
+    # the modern `mset` API.
+    full_key = _compose_key(namespace, "food_preferences")
+
+    if hasattr(store, "mset"):
+        try:
+            store.mset([(full_key, updated_preferences.encode())])  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    elif hasattr(store, "put"):
+        try:
+            store.put(namespace, "food_preferences", updated_preferences)  # type: ignore[arg-type]
+        except Exception:
+            pass
 
 # Default food preferences
 DEFAULT_FOOD_PREFERENCES = """
@@ -362,17 +415,31 @@ def acknowledge_preferences(state: TriageState, store: BaseStore):
 # WORKFLOW CONSTRUCTION
 # ===============================
 
-def create_triage_agent():
-    """Create and compile the triage agent with memory support."""
-    
-    # Create the workflow
+def create_triage_agent(store: BaseStore | None = None):
+    """Create and compile the triage agent.
+
+    Args:
+        store: Optional persistent ``BaseStore`` implementation.  If ``None``
+            (the default) we fall back to a lightweight on-disk
+            ``LocalFileStore`` located in the current working directory.  This
+            gives you out-of-the-box persistence without running an external
+            database server.
+    """
+
+    # If no store was supplied, keep a single folder-based store alongside the
+    # project so memory survives interpreter restarts.
+    if store is None:
+        store = cast(BaseStore, LocalFileStore(".recipe_assistant_store"))  # type: ignore[arg-type]
+
+    # Build the graph
     workflow = StateGraph(TriageState)
-    
-    # Add nodes (store parameter will be passed automatically by LangGraph)
+
+    # Add nodes (LangGraph will automatically inject ``store`` into any node
+    # that declares a ``store: BaseStore`` parameter)
     workflow.add_node("triage", triage_request)
     workflow.add_node("generate_recipe", generate_recipe)
     workflow.add_node("acknowledge_preferences", acknowledge_preferences)
-    
+
     # Set up the flow with conditional routing
     workflow.add_edge(START, "triage")
     workflow.add_conditional_edges(
@@ -386,9 +453,9 @@ def create_triage_agent():
     )
     workflow.add_edge("generate_recipe", END)
     workflow.add_edge("acknowledge_preferences", END)
-    
-    # Compile with memory support (store will be injected by LangGraph)
-    return workflow.compile()
+
+    # Compile with memory support
+    return workflow.compile(store=store)
 
 # Create the agent instance for LangGraph dev
 email_assistant = create_triage_agent()
