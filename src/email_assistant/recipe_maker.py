@@ -44,7 +44,12 @@ def get_food_preferences(store: BaseStore, namespace, default_content=None):
     Returns:
         str: The content of the food preferences, either from existing memory or the default
     """
-    # Search for existing memory with namespace and key
+    # If no store was provided (e.g., the graph is executed without a persistent
+    # memory backend such as in the Streamlit demo), gracefully fall back to
+    # using the default content in memory-less mode.
+    if store is None:
+        return default_content or ""
+
     user_food_prefs = store.get(namespace, "food_preferences")
     
     # If memory exists, return its content (the value)
@@ -54,7 +59,7 @@ def get_food_preferences(store: BaseStore, namespace, default_content=None):
     # If memory doesn't exist, add it to the store and return the default content
     else:
         # Namespace, key, value
-        store.put(namespace, "food_preferences", default_content or "")
+        store.put(namespace, "food_preferences", default_content or "")  # type: ignore[arg-type]
         user_food_prefs = default_content or ""
     
     # Return the default content
@@ -69,6 +74,10 @@ def update_food_preferences(store: BaseStore, namespace, messages, current_prefe
         messages: List of messages to update the memory with
         current_preferences: Current food preferences to build upon
     """
+    # If no store was provided, skip the update entirely.
+    if store is None:
+        return
+
     # Create the memory update prompt
     memory_update_prompt = f"""
     Based on the user's interaction, update their food preferences profile.
@@ -97,7 +106,6 @@ def update_food_preferences(store: BaseStore, namespace, messages, current_prefe
         ] + messages
     )
     
-    # Save the updated memory to the store
     # Handle the structured output result properly
     if hasattr(result, 'food_preferences'):
         updated_preferences = result.food_preferences
@@ -106,7 +114,9 @@ def update_food_preferences(store: BaseStore, namespace, messages, current_prefe
     else:
         updated_preferences = str(result)
     
-    store.put(namespace, "food_preferences", updated_preferences)
+    # Persist the updated preferences only if a store is available
+    if store is not None:
+        store.put(namespace, "food_preferences", updated_preferences)  # type: ignore[arg-type]
 
 # Default food preferences
 DEFAULT_FOOD_PREFERENCES = """
